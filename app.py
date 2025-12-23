@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from flask_jwt_extended import (
     JWTManager, create_access_token,
     jwt_required, get_jwt_identity, get_jwt
@@ -9,6 +10,7 @@ from models import db, User, Appointment
 import os
 
 app = Flask(__name__)
+CORS(app)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///barbing.db"
 app.config["JWT_SECRET_KEY"] = "super-secret-key"
