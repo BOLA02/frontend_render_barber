@@ -15,11 +15,10 @@ app.config["JWT_SECRET_KEY"] = "super-secret-key"
 
 db.init_app(app)
 jwt = JWTManager(app)
-
 with app.app_context():
     db.create_all()
 
-# Barber working hours
+
 OPEN_TIME = time(10, 0)
 CLOSE_TIME = time(22, 0)
 
