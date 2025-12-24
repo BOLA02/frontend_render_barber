@@ -1,187 +1,238 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from flask_jwt_extended import (
-    JWTManager, create_access_token,
-    jwt_required, get_jwt_identity, get_jwt
-)
+from flask import Flask, request, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, timedelta, time
-from models import db, User, Appointment
-import os
+from datetime import datetime, timedelta
+from flask_cors import CORS
+
+from config import SECRET_KEY, ADMIN_PASSWORD
+from database import db, init_db
+from models import Barber, Customer, Service, Booking
 
 app = Flask(__name__)
+app.config["SECRET_KEY"] = SECRET_KEY
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///barbing.db"
+
 CORS(app)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///barbing.db"
-app.config["JWT_SECRET_KEY"] = "super-secret-key"
+init_db(app)
 
-db.init_app(app)
-jwt = JWTManager(app)
-with app.app_context():
-    db.create_all()
+@app.route("/admin/login", methods=["POST"])
+def admin_login():
+    if request.json.get("password") == ADMIN_PASSWORD:
+        session["admin"] = True
+        return jsonify({"msg": "Admin logged in"})
+    return jsonify({"msg": "Invalid admin password"}), 401
+
+@app.route("/admin/pending-barbers")
+def pending_barbers():
+    if not session.get("admin"):
+        return jsonify({"msg": "Unauthorized"}), 403
+    barbers = Barber.query.filter_by(status="pending").all()
+    return jsonify([{
+        "id": b.id,
+        "name": b.name,
+        "shop_name": b.shop_name,
+        "phone": b.phone
+    } for b in barbers])
+
+@app.route("/admin/approve/<int:barber_id>", methods=["POST"])
+def approve_barber(barber_id):
+    if not session.get("admin"):
+        return jsonify({"msg": "Unauthorized"}), 403
+    barber = Barber.query.get(barber_id)
+    barber.status = "approved"
+    db.session.commit()
+    return jsonify({"msg": "Barber approved"})
+
+@app.route("/admin/reject/<int:barber_id>", methods=["POST"])
+def reject_barber(barber_id):
+    if not session.get("admin"):
+        return jsonify({"msg": "Unauthorized"}), 403
+    barber = Barber.query.get(barber_id)
+    barber.status = "rejected"
+    db.session.commit()
+    return jsonify({"msg": "Barber rejected"})
 
 
-OPEN_TIME = time(10, 0)
-CLOSE_TIME = time(22, 0)
-
-
-@app.route("/register", methods=["POST"])
-def register():
-    data = request.get_json()
-
-    if User.query.filter_by(email=data["email"]).first():
-        return jsonify({"message": "Email already exists"}), 400
-
-    user = User(
+@app.route("/barber/register", methods=["POST"])
+def barber_register():
+    data = request.json
+    barber = Barber(
         name=data["name"],
+        phone=data["phone"],
+        email=data["email"],
+        shop_name=data["shop_name"],
+        address=data["address"],
+        password=generate_password_hash(data["password"])
+    )
+    db.session.add(barber)
+    db.session.commit()
+    return jsonify({"msg": "Barber registered, awaiting approval"})
+
+@app.route("/barber/login", methods=["POST"])
+def barber_login():
+    data = request.json
+    barber = Barber.query.filter(
+        (Barber.email == data["login"]) | (Barber.phone == data["login"])
+    ).first()
+
+    if barber and check_password_hash(barber.password, data["password"]):
+        session["barber_id"] = barber.id
+        return jsonify({"msg": "Login successful", "status": barber.status})
+    return jsonify({"msg": "Invalid credentials"}), 401
+
+@app.route("/barber/forgot-password", methods=["POST"])
+def barber_forgot_password():
+    data = request.json
+    barber = Barber.query.filter(
+        (Barber.email == data["login"]) | (Barber.phone == data["login"])
+    ).first()
+    if not barber:
+        return jsonify({"msg": "Email or phone not registered"}), 404
+
+    barber.password = generate_password_hash(data["new_password"])
+    db.session.commit()
+    return jsonify({"msg": "Password updated successfully"})
+
+@app.route("/barber/services", methods=["POST"])
+def add_service():
+    barber_id = session.get("barber_id")
+    barber = Barber.query.get(barber_id)
+    if not barber or barber.status != "approved":
+        return jsonify({"msg": "Unauthorized"}), 403
+
+    data = request.json
+    service = Service(
+        barber_id=barber_id,
+        name=data["name"],
+        price=data["price"]
+    )
+    db.session.add(service)
+    db.session.commit()
+    return jsonify({"msg": "Service added"})
+
+@app.route("/barber/bookings")
+def barber_bookings():
+    barber_id = session.get("barber_id")
+    bookings = Booking.query.filter_by(barber_id=barber_id).all()
+    return jsonify([{
+        "id": b.id,
+        "service": b.service_name,
+        "date": b.date,
+        "time": b.time,
+        "status": b.status
+    } for b in bookings])
+
+@app.route("/barber/booking/<int:booking_id>", methods=["PATCH"])
+def update_booking(booking_id):
+    barber_id = session.get("barber_id")
+    booking = Booking.query.get(booking_id)
+    if not booking or booking.barber_id != barber_id:
+        return jsonify({"msg": "Unauthorized"}), 403
+
+    booking.status = request.json.get("status", booking.status)
+    db.session.commit()
+    return jsonify({"msg": "Booking updated"})
+
+
+@app.route("/customer/register", methods=["POST"])
+def customer_register():
+    data = request.json
+    customer = Customer(
+        name=data["name"],
+        phone=data["phone"],
         email=data["email"],
         password=generate_password_hash(data["password"])
     )
-
-    db.session.add(user)
+    db.session.add(customer)
     db.session.commit()
+    return jsonify({"msg": "Customer registered"})
 
-    return jsonify({"message": "User registered"}), 201
-
-
-@app.route("/login", methods=["POST"])
-def login():
-    data = request.get_json()
-    user = User.query.filter_by(email=data["email"]).first()
-
-    if not user or not check_password_hash(user.password, data["password"]):
-        return jsonify({"message": "Invalid credentials"}), 401
-
-    token = create_access_token(
-        identity=str(user.id),
-        additional_claims={"role": user.role}
-    )
-
-    return jsonify({"access_token": token})
-
-
-@app.route("/forgot-password", methods=["POST"])
-def forgot_password():
-    data = request.get_json()
-    user = User.query.filter_by(email=data["email"]).first()
-
-    if not user:
-        return jsonify({"message": "Email not registered"}), 404
-
-    user.password = generate_password_hash(data["new_password"])
-    db.session.commit()
-
-    return jsonify({"message": "Password reset successful"})
-
-
-@app.route("/appointments", methods=["POST"])
-@jwt_required()
-def create_appointment():
-    user_id = int(get_jwt_identity())
-    data = request.get_json()
-
-    start_time = datetime.strptime(data["start_time"], "%Y-%m-%d %H:%M")
-    duration = data.get("duration", 30)
-    end_time = start_time + timedelta(minutes=duration)
-
-    if start_time < datetime.now():
-        return jsonify({"message": "Cannot book in the past"}), 400
-
-    if not (OPEN_TIME <= start_time.time() < CLOSE_TIME and OPEN_TIME < end_time.time() <= CLOSE_TIME):
-        return jsonify({"message": "Working hours are 10:00 AM - 10:00 PM"}), 400
-
-    conflict = Appointment.query.filter(
-        Appointment.status.in_(["pending", "approved"]),
-        Appointment.start_time < end_time,
-        Appointment.end_time > start_time
+@app.route("/customer/login", methods=["POST"])
+def customer_login():
+    data = request.json
+    customer = Customer.query.filter(
+        (Customer.email == data["login"]) | (Customer.phone == data["login"])
     ).first()
 
-    if conflict:
-        return jsonify({"message": "Time slot already booked"}), 409
+    if customer and check_password_hash(customer.password, data["password"]):
+        session["customer_id"] = customer.id
+        return jsonify({"msg": "Login successful"})
+    return jsonify({"msg": "Invalid credentials"}), 401
 
-    appointment = Appointment(
-        user_id=user_id,
-        service=data["service"],
-        start_time=start_time,
-        end_time=end_time
+@app.route("/customer/forgot-password", methods=["POST"])
+def customer_forgot_password():
+    data = request.json
+    customer = Customer.query.filter(
+        (Customer.email == data["login"]) | (Customer.phone == data["login"])
+    ).first()
+    if not customer:
+        return jsonify({"msg": "Email or phone not registered"}), 404
+
+    customer.password = generate_password_hash(data["new_password"])
+    db.session.commit()
+    return jsonify({"msg": "Password updated successfully"})
+
+@app.route("/barbers")
+def list_barbers():
+    barbers = Barber.query.filter_by(status="approved").all()
+    return jsonify([{
+        "id": b.id,
+        "shop_name": b.shop_name
+    } for b in barbers])
+
+@app.route("/book", methods=["POST"])
+def book_barber():
+    customer_id = session.get("customer_id")
+    data = request.json
+
+    existing = Booking.query.filter_by(
+        barber_id=data["barber_id"],
+        date=data["date"],
+        time=data["time"]
+    ).first()
+    if existing:
+        return jsonify({"msg": "Time already booked"}), 400
+
+    booking = Booking(
+        barber_id=data["barber_id"],
+        customer_id=customer_id,
+        service_name=data["service"],
+        date=data["date"],
+        time=data["time"],
+        location=data["location"]
     )
-
-    db.session.add(appointment)
+    db.session.add(booking)
     db.session.commit()
+    return jsonify({"msg": "Booking created"})
 
-    return jsonify({"message": "Appointment booked"}), 201
+@app.route("/my-bookings")
+def my_bookings():
+    customer_id = session.get("customer_id")
+    bookings = Booking.query.filter_by(customer_id=customer_id).all()
+    return jsonify([{
+        "id": b.id,
+        "date": b.date,
+        "time": b.time,
+        "status": b.status
+    } for b in bookings])
 
+@app.route("/cancel/<int:booking_id>", methods=["DELETE"])
+def cancel_booking(booking_id):
+    customer_id = session.get("customer_id")
+    booking = Booking.query.get(booking_id)
+    if not booking or booking.customer_id != customer_id:
+        return jsonify({"msg": "Unauthorized"}), 403
 
-@app.route("/appointments", methods=["GET"])
-@jwt_required()
-def my_appointments():
-    user_id = int(get_jwt_identity())
+    booking_time = datetime.strptime(
+        f"{booking.date} {booking.time}", "%Y-%m-%d %H:%M"
+    )
+    if datetime.now() + timedelta(hours=2) > booking_time:
+        return jsonify({"msg": "Too late to cancel"}), 400
 
-    appointments = Appointment.query.filter_by(user_id=user_id).all()
-
-    return jsonify([
-        {
-            "id": a.id,
-            "service": a.service,
-            "start_time": a.start_time.strftime("%Y-%m-%d %H:%M"),
-            "end_time": a.end_time.strftime("%Y-%m-%d %H:%M"),
-            "status": a.status
-        } for a in appointments
-    ])
-
-
-@app.route("/appointments/<int:id>/cancel", methods=["PUT"])
-@jwt_required()
-def cancel_appointment(id):
-    user_id = int(get_jwt_identity())
-    appointment = Appointment.query.get_or_404(id)
-
-    if appointment.user_id != user_id:
-        return jsonify({"message": "Unauthorized"}), 403
-
-    appointment.status = "cancelled"
+    db.session.delete(booking)
     db.session.commit()
-
-    return jsonify({"message": "Appointment cancelled"})
-
-
-@app.route("/admin/appointments", methods=["GET"])
-@jwt_required()
-def admin_view():
-    claims = get_jwt()
-
-    if claims["role"] != "admin":
-        return jsonify({"message": "Admin access required"}), 403
-
-    appointments = Appointment.query.all()
-
-    return jsonify([
-        {
-            "id": a.id,
-            "user_id": a.user_id,
-            "service": a.service,
-            "start_time": a.start_time.strftime("%Y-%m-%d %H:%M"),
-            "end_time": a.end_time.strftime("%Y-%m-%d %H:%M"),
-            "status": a.status
-        } for a in appointments
-    ])
-
-
-@app.route("/admin/appointments/<int:id>", methods=["PUT"])
-@jwt_required()
-def update_status(id):
-    claims = get_jwt()
-
-    if claims["role"] != "admin":
-        return jsonify({"message": "Admin only"}), 403
-
-    appointment = Appointment.query.get_or_404(id)
-    appointment.status = request.json["status"]
-    db.session.commit()
-
-    return jsonify({"message": "Status updated"})
+    return jsonify({"msg": "Booking cancelled"})
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(debug=True)
