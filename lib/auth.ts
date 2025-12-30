@@ -67,14 +67,17 @@ export interface Appointment {
    API Helper
 ======================= */
 
-const API_BASE_URL = "http://localhost:5000"
+const API_BASE_URL = "https://barbing-salon-api.onrender.com"
+// const API_BASE_URL = "http://localhost:5000"
 
 async function apiCall(endpoint: string, options: RequestInit = {}) {
+  const token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN)
+  
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
-    credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {}),
       ...options.headers,
     },
   })
@@ -94,6 +97,7 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
 
 const STORAGE_KEYS = {
   CURRENT_USER: "barber_app_current_user",
+  AUTH_TOKEN: "barber_app_auth_token",
 }
 
 /* =======================
@@ -108,10 +112,24 @@ export const authService = {
     phone: string,
     role: UserRole
   ) => {
-    return apiCall("/register", {
+    const response = await apiCall("/register", {
       method: "POST",
       body: JSON.stringify({ name, phone, email, password, role }),
     })
+
+    // Store token
+    localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, response.token)
+
+    const user: User = {
+      id: response.user_id.toString(),
+      email,
+      name,
+      phone,
+      role: response.role,
+    }
+
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user))
+    return user
   },
 
   signIn: async (email: string, password: string) => {
@@ -120,13 +138,11 @@ export const authService = {
       body: JSON.stringify({ email, password }),
     })
 
-    // Get the actual user ID from /me endpoint
-    const meResponse = await apiCall('/me', {
-      method: 'GET',
-    })
+    // Store token
+    localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, response.token)
 
     const user: User = {
-      id: meResponse.id.toString(), // Use the real user ID from backend
+      id: response.user_id.toString(),
       email,
       name: "",
       phone: "",
@@ -147,6 +163,7 @@ export const authService = {
   signOut: async () => {
     await apiCall("/logout", { method: "POST" })
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER)
+    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
   },
 
   getCurrentUser: (): User | null => {
@@ -186,7 +203,7 @@ export const shopService = {
 
     return response.map((b: any) => ({
       id: b.id.toString(),
-      ownerId: b.id.toString(), // This is the user_id from backend
+      ownerId: b.id.toString(),
       name: b.shop_name,
       description: b.description,
       address: b.address,
