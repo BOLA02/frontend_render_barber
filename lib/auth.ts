@@ -71,7 +71,10 @@ const API_BASE_URL = "https://barbing-salon-api.onrender.com"
 // const API_BASE_URL = "http://localhost:5000"
 
 async function apiCall(endpoint: string, options: RequestInit = {}) {
-  const token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN)
+  // Only access localStorage in the browser
+  const token = typeof window !== 'undefined' 
+    ? localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN)
+    : null
   
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
@@ -167,6 +170,9 @@ export const authService = {
   },
 
   getCurrentUser: (): User | null => {
+    // Check if we're in the browser
+    if (typeof window === 'undefined') return null
+    
     const user = localStorage.getItem(STORAGE_KEYS.CURRENT_USER)
     return user ? JSON.parse(user) : null
   },
