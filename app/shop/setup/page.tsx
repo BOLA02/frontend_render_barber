@@ -135,17 +135,17 @@ export default function ShopSetupPage() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8">
-      <div className="container mx-auto px-4 max-w-3xl">
+    <div className="min-h-screen bg-slate-50 py-4 sm:py-8">
+      <div className="container mx-auto px-3 sm:px-4 max-w-3xl">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-3xl">Setup Your Barbershop</CardTitle>
-            <CardDescription>Tell us about your business to get started</CardDescription>
+          <CardHeader className="px-4 sm:px-6">
+            <CardTitle className="text-2xl sm:text-3xl">Setup Your Barbershop</CardTitle>
+            <CardDescription className="text-sm sm:text-base">Tell us about your business to get started</CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+          <CardContent className="px-4 sm:px-6">
+            <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="name">
+                <Label htmlFor="name" className="text-sm">
                   Shop Name <span className="text-red-500">*</span>
                 </Label>
                 <Input
@@ -154,22 +154,24 @@ export default function ShopSetupPage() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
+                  className="text-base"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description" className="text-sm">Description</Label>
                 <Textarea
                   id="description"
                   placeholder="Tell customers about your barbershop..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
+                  className="text-base resize-none"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="address">
+                <Label htmlFor="address" className="text-sm">
                   Address <span className="text-red-500">*</span>
                 </Label>
                 <Input
@@ -178,12 +180,13 @@ export default function ShopSetupPage() {
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   required
+                  className="text-base"
                 />
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="phone">
+                  <Label htmlFor="phone" className="text-sm">
                     Phone <span className="text-red-500">*</span>
                   </Label>
                   <Input
@@ -193,11 +196,12 @@ export default function ShopSetupPage() {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     required
+                    className="text-base"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email">
+                  <Label htmlFor="email" className="text-sm">
                     Email <span className="text-red-500">*</span>
                   </Label>
                   <Input
@@ -207,48 +211,72 @@ export default function ShopSetupPage() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
+                    className="text-base"
                   />
                 </div>
               </div>
 
               <div className="space-y-3">
-                <Label>Operating Hours</Label>
+                <Label className="text-sm">Operating Hours</Label>
                 <div className="space-y-2">
                   {Object.entries(hours).map(([day, times]) => (
-                    <div key={day} className="flex items-center gap-3 p-3 bg-muted rounded-md">
-                      <div className="w-28">
-                        <span className="font-medium capitalize">{day}</span>
+                    <div key={day} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 bg-muted rounded-md">
+                      {/* Day name */}
+                      <div className="flex items-center justify-between sm:w-24">
+                        <span className="font-medium capitalize text-sm sm:text-base">{day}</span>
+                        {/* Mobile: Button on same line as day */}
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => toggleDayClosed(day)}
+                          className="sm:hidden text-xs h-8 px-3"
+                        >
+                          {times.closed ? "Open" : "Close"}
+                        </Button>
                       </div>
-                      {!times.closed ? (
-                        <div className="flex items-center gap-2 flex-1">
-                          <Input
-                            type="time"
-                            value={times.open}
-                            onChange={(e) =>
-                              setHours({
-                                ...hours,
-                                [day]: { ...times, open: e.target.value },
-                              })
-                            }
-                            className="w-32"
-                          />
-                          <span>to</span>
-                          <Input
-                            type="time"
-                            value={times.close}
-                            onChange={(e) =>
-                              setHours({
-                                ...hours,
-                                [day]: { ...times, close: e.target.value },
-                              })
-                            }
-                            className="w-32"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex-1 text-muted-foreground">Closed</div>
-                      )}
-                      <Button type="button" variant="outline" size="sm" onClick={() => toggleDayClosed(day)}>
+
+                      {/* Time inputs or Closed text */}
+                      <div className="flex-1 min-w-0">
+                        {!times.closed ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="time"
+                              value={times.open}
+                              onChange={(e) =>
+                                setHours({
+                                  ...hours,
+                                  [day]: { ...times, open: e.target.value },
+                                })
+                              }
+                              className="flex-1 min-w-0 text-sm sm:text-base"
+                            />
+                            <span className="text-sm text-muted-foreground flex-shrink-0">to</span>
+                            <Input
+                              type="time"
+                              value={times.close}
+                              onChange={(e) =>
+                                setHours({
+                                  ...hours,
+                                  [day]: { ...times, close: e.target.value },
+                                })
+                              }
+                              className="flex-1 min-w-0 text-sm sm:text-base"
+                            />
+                          </div>
+                        ) : (
+                          <div className="text-sm sm:text-base text-muted-foreground py-2">Closed</div>
+                        )}
+                      </div>
+
+                      {/* Desktop: Button at the end */}
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => toggleDayClosed(day)}
+                        className="hidden sm:inline-flex text-xs sm:text-sm h-9 px-3 flex-shrink-0"
+                      >
                         {times.closed ? "Open" : "Close"}
                       </Button>
                     </div>
@@ -256,9 +284,13 @@ export default function ShopSetupPage() {
                 </div>
               </div>
 
-              {error && <div className="text-sm text-red-500 bg-red-50 p-3 rounded-md">{error}</div>}
+              {error && (
+                <div className="text-xs sm:text-sm text-red-500 bg-red-50 p-3 rounded-md border border-red-200">
+                  {error}
+                </div>
+              )}
 
-              <Button type="submit" className="w-full" size="lg" disabled={loading}>
+              <Button type="submit" className="w-full text-base" size="lg" disabled={loading}>
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
